@@ -1,5 +1,5 @@
 # Xenoblade Importer For Noesis
-Supports all 3 switch titles. Textures will be exported to the same folder as the exported mesh. During export it is recommended to set the scale to 100. Morph support and lower LODs are a toggle in the tools menu.
+Supports all 3 switch titles. Textures will be exported to the same folder as the exported mesh. During export it is recommended to set the scale to 100. Morph support and lower LODs are a toggle in the tools menu. Any discoloration in the prewview is caused by the model's vertex coloring.
 
 
 # DE and X3
