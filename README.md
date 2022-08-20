@@ -1,14 +1,23 @@
 # Xenoblade Importer For Noesis
-Supports all 3 switch titles. Textures will be exported to the same folder as the exported mesh. During export it is recommended to set the scale to 100. Morph support and lower LODs are a toggle in the tools menu. Any discoloration in the prewview is caused by the model's vertex coloring.
+Supports all 3 switch titles. Textures will be exported to the same folder as the exported mesh. During export it is recommended to set the scale to 100. Morph support and lower LODs are a toggle in the tools menu.
 
 
 # DE and X3
-Some meshes have shared skeletons. Under the tools menu you can manually specify the name of a chr file to use for the base skeleton.
+Some meshes have shared skeletons. Under the tools menu you can manually specify the name of a chr file to use for the base skeleton. The Chr file you want to use is going to be the lowest numbered file for the respective character. For example Shulk form DE would use pc010000 or Noah from X3 would use ch01011000
 
 
-# Known Bugs
+# Known Issues
 * Due to the way the game has two skeletons that need merged, some meshes might end up with a twist bone parented to the root.
 
-* Minor weight issues with eyes. Ive noticed that some eye shine parts sometimes get weighted to the wrong eye or in the case of a levnis it had its eye mesh weighted to the root. So far nothing major but still needs testing.
+* Most weight issues should be fix but 1 or 2 might have slipped by
 
 * On import into blender, some jaw bones might be rotated causing the inner mouth to stick out of the mesh slightly. Just reset the pose of the model to fix the issue. This is more on blender's side than noesis'
+
+* When the skeleton isn't properly overridden on ch01011013, noesis gets stuck in an infinite export. Something in the weight data is causing the issue not noesis doens't seem to have a debug option to see exactly what is causing the issue.
+
+
+# Recent Changes
+* Vertex colors no long preview over the mesh but will still be exported
+* Some texture mirroring support was added DE mesh preview. It's not 100% accurate in detection but the meshes look a lot better than before
+* Material color is now read
+* Some work was put into fixing some of the misc weight errors that were appearing on eyes and other misc meshes
