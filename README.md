@@ -21,3 +21,4 @@ Some meshes have shared skeletons. Under the tools menu you can manually specify
 * Some texture mirroring support was added DE mesh preview. It's not 100% accurate in detection but the meshes look a lot better than before
 * Material color is now read
 * Some work was put into fixing some of the misc weight errors that were appearing on eyes and other misc meshes
+* Added the mesh index to the end of the mesh name. This will prevent meshes with the same material from being auto merged. Usefull for character meshes that have parts of their arm toggled for different customization
