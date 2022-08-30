@@ -11,7 +11,6 @@ def registerNoesisTypes():
     handle = noesis.register("Xenoblade model import", ".wismt")
     noesis.setHandlerTypeCheck(handle, noepyCheckType)
     noesis.setHandlerLoadModel(handle, noepyLoadModel)
-    noesis.setTypeSharedModelFlags(handle, noesis.NMSHAREDFL_FLATWEIGHTS)
     xenoSkelHandle = noesis.registerTool("&Skeleton Override", xenoToolMenu)
     xenoLodHandle = noesis.registerTool("&Try Highest Level of Detail", xenoLodToggle)
     xenoMorphHandle = noesis.registerTool("&Skip Morph Data", xenoMorphToggle)
@@ -20,7 +19,6 @@ def registerNoesisTypes():
     noesis.setToolSubMenuName(xenoMorphHandle,"Xenoblade Switch")
 
     noesis.checkToolMenuItem(xenoLodHandle,True)
-
     return 1
     
 chrOverrideString = ""
@@ -109,7 +107,6 @@ def noepyLoadModel(data, mdlList):
                 wismt.seek(texNameOffset)
                 texName = wismt.readString()
                 TextureNameList.append(texName)
-    
     for x in range(DataCount):
         wismt.seek(DataOffset+0x14*x)
         dataOffset = wismt.readInt()
@@ -118,8 +115,6 @@ def noepyLoadModel(data, mdlList):
         dataType = wismt.readShort()
         if dataType == 2:
             break
-    
-    
     toc = []
     wismt.seek(ToCOffset)
     for x in range(ToCCount):
@@ -127,8 +122,6 @@ def noepyLoadModel(data, mdlList):
         DecompSize = wismt.readInt()
         xbc1Offset = wismt.readInt()
         toc.append(xbc1Offset)
-        
-    
     wismtDecomp = decomp_xbc1(wismt,toc[0])
     VertData,FaceData,WeightDefTable,WeightOffsetTable = parse_vert_data(wismtDecomp)
     texTable = parse_lbim(wismtDecomp,dataOffset,mdlList,TextureNameList)
@@ -146,8 +139,6 @@ def noepyLoadModel(data, mdlList):
             tmpF = texTable2[x].format
             tmpTex = parse_texture(tmpImg,mdlList,texName=TextureNameList[tmpIndex],H=tmpH,W=tmpW,F=tmpF)
             texTable[tmpIndex] = tmpTex
-    
-            
     mPath = FilePath[:-3]+"tex\\nx\\m\\"
     if os.path.exists(mPath):
         for x in range(TextureIDCount):
@@ -161,11 +152,7 @@ def noepyLoadModel(data, mdlList):
                 else:
                     tmpTexOut = parse_texture(tmpTex,mdlList,texName=TextureNameList[tmpIndex])
                 texTable[tmpIndex] = tmpTexOut
-    
-    DataTable,MatTable,BoneTableFallback = parse_wimdo(wimdo,TextureNameList,texTable)
-    
-
-    
+    DataTable,MatTable,BoneTableFallback,LodDef = parse_wimdo(wimdo,TextureNameList,texTable)
     if BoneTable:
         tmpList = [i.name for i in BoneTable]
         tmpList2 = [i.name for i in BoneTableFallback]
@@ -181,8 +168,6 @@ def noepyLoadModel(data, mdlList):
                     tmpInt += 1
     elif not BoneTable and BoneTableFallback:
         BoneTable = BoneTableFallback
-    
-    
     ctx = rapi.rpgCreateContext()
     for d in DataTable:
         rapi.rpgClearBufferBinds()
@@ -196,7 +181,7 @@ def noepyLoadModel(data, mdlList):
                     rapi.rpgFeedMorphTargetNormalsOfs(m, noesis.RPGEODATA_UBYTE, CurVert["BaseMorphSize"], 0xc)
                     rapi.rpgCommitMorphFrame(CurVert["VertCount"])
                 rapi.rpgCommitMorphFrameSet()
-        else: #CurVert["VertDef"].get("Vert",None) != None:
+        else:
             rapi.rpgBindPositionBufferOfs(CurVert["VertData"], noesis.RPGEODATA_FLOAT, CurVert["VertSize"], CurVert["VertDef"]["Vert"])
             if CurVert["VertDef"].get("Normal",None) != None:
                 rapi.rpgBindNormalBufferOfs(CurVert["VertData"], noesis.RPGEODATA_BYTE, CurVert["VertSize"], CurVert["VertDef"]["Normal"])
@@ -222,8 +207,7 @@ def noepyLoadModel(data, mdlList):
             rapi.rpgBindBoneIndexBuffer(BoneIndexBytes,noesis.RPGEODATA_USHORT,8,4)
             rapi.rpgBindBoneWeightBuffer(WeightBytes,noesis.RPGEODATA_USHORT,8,4)
         for x in DataTable[d]:
-            if x[4] < 2 or not xenoLodFlag:
-
+            if x[4] in LodDef or not xenoLodFlag:
                 CurFace = FaceData[x[2]]
                 rapi.rpgSetName(MatTable[x[3]].name+"_"+str(x[5]))
                 rapi.rpgSetMaterial(MatTable[x[3]].name)
@@ -232,8 +216,7 @@ def noepyLoadModel(data, mdlList):
     mdl.setModelMaterials(NoeModelMaterials(texTable,MatTable))
     if BoneTable:
         mdl.setBones(BoneTable)
-    mdlList.append(mdl)      
-
+    mdlList.append(mdl)    
     rapi.rpgClearBufferBinds()
     return 1
 
@@ -351,7 +334,6 @@ def parse_vert_data(CurFile):
             if DefTypeLookup:
                 VertDefOutput[DefTypeLookup] = DefOffset
             DefOffset+=DefLength
-            
         if x == WeightDefIndex:
             WeightDefTable = []
             for y in range(VertCount):
@@ -359,8 +341,6 @@ def parse_vert_data(CurFile):
                 Weights = noeUnpack("4H",CurFile.readBytes(8))
                 BoneWeightIndexes = noeUnpack("4B",CurFile.readBytes(4))
                 WeightDefTable.append([BoneWeightIndexes,Weights])
-                
-            
         CurFile.seek(ChunkStart)
         VertChunk = CurFile.readBytes(VertCount*VertSize)
         VertData.append({"VertData":VertChunk,"VertDef":VertDefOutput,"VertSize":VertSize,"VertCount":VertCount})
@@ -424,7 +404,6 @@ def parse_vert_data(CurFile):
                     tmpStream.writeUByte(tmpNormals3)
                 tmpStream.seek(0)
                 VertData[BufferIndex]["MorphTable"].append(tmpStream.getBuffer())
-                
     return (VertData,FaceData,WeightDefTable,WeightOffsetTable)
     
 def parse_wimdo(CurFile,TextureNameList,texTable):
@@ -439,9 +418,23 @@ def parse_wimdo(CurFile,TextureNameList,texTable):
     DataCount = CurFile.readInt()
     CurFile.read(4)
     BoneOffset = CurFile.readInt()
+    CurFile.seek(MeshOffset+0x8c)
+    LodDefOffset = CurFile.readInt()
     
+    if LodDefOffset > 0:
+        LodDef = []
+        LodDefOffset += MeshOffset
+        CurFile.seek(LodDefOffset+0xc)
+        LodDefDataOffset = CurFile.readInt()+LodDefOffset
+        LodDefDataCount = CurFile.readInt()
+        CurFile.seek(LodDefDataOffset)
+        for x in range(LodDefDataCount):
+            LodIndex = CurFile.readShort()
+            CurFile.seek(2,1)
+            LodDef.append(LodIndex+1)
+    else:
+        LodDef = [1]
     BoneTable = None
-    
     DataTable = {}
     DupeCheck = []
     BoneTable = []
@@ -459,6 +452,7 @@ def parse_wimdo(CurFile,TextureNameList,texTable):
             MatIndex = CurFile.readShort()
             CurFile.read(14)
             Lod = CurFile.readShort()
+            if Lod == 0: Lod = 1 #temp fix?
             Group = CurFile.readShort()
             SubTab = [x,VertIndex,FaceIndex,MatIndex,Lod,y,Group,MeshFlag]
             DataEntry = DataTable.get(VertIndex)
@@ -508,10 +502,7 @@ def parse_wimdo(CurFile,TextureNameList,texTable):
                 BoneTable[Child2].parentIndex = -1
                 BoneTable[Child1].parentName = BoneTable[Parent1].name
                 BoneTable[Child2].parentName = BoneTable[Parent2].name
-            
-            
-    
-    return DataTable,MatTable,BoneTable
+    return DataTable,MatTable,BoneTable,LodDef
     
 def parse_materials(CurFile,MaterialTableOffset,TextureNameList,texTable,Itter = 0x74):
     CurFile.seek(MaterialTableOffset)
@@ -524,7 +515,6 @@ def parse_materials(CurFile,MaterialTableOffset,TextureNameList,texTable,Itter =
         CurFile.seek(MatOffset + Itter*i)
         NameOffset = CurFile.readInt()+MaterialTableOffset
         CurFile.seek(0x8,1)
-        #rgba color here
         MatColor = noeUnpack("ffff",CurFile.readBytes(0x10))
         CurFile.seek(0x4,1)
         MatTexTableOffset = CurFile.readInt()+MaterialTableOffset
@@ -540,6 +530,7 @@ def parse_materials(CurFile,MaterialTableOffset,TextureNameList,texTable,Itter =
         tmpMat = NoeMaterial(MatName,"" if AlbedoIndex == None or len(TextureNameList) == 0 else TextureNameList[AlbedoIndex]+".png")
         tmpMat.setMetal(0,0)
         tmpMat.setDiffuseColor(MatColor)
+        tmpMat.setFlags(noesis.NMATFLAG_TWOSIDED)
         MatTable.append(tmpMat)
     return MatTable
     
@@ -572,7 +563,6 @@ def generate_weight_table(weightRefTable,WeightDefTable,BoneTable,BoneTableFallb
             if (y > 0 and wDef[0][y] == 0):
                 tmpBIndex.append(0)
             else:
-                #BoneIndex = next((i for i, item in enumerate(BoneTable) if BoneTable[i].name == BoneTableFallback[wDef[0][y]]), None)
                 BoneIndex = next((i for i, item in enumerate(BoneTable) if item.name == (BoneTableFallback[wDef[0][y]].name )), 0)#might need to fix if 0 causes errors #or "AS_"+BoneTableFallback[wDef[0][y]].name[3:]
                 tmpBIndex.append(BoneIndex)
         BoneIndexBytes += noePack("4H",*tmpBIndex)
@@ -643,6 +633,8 @@ def parse_texture(CurFile,mdlList,htex = None,Offset = 0,FileSize = None,texName
             mbH = 3
         if xSize == 512 and ySize <= 129:
             mbH = 2
+        if xSize == 512 and ySize <= 65:
+            mbH = 1
         if xSize == 256 and ySize < 1025:
             mbH = 4
         if xSize == 256 and ySize < 512:
