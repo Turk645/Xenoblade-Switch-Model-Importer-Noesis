@@ -17,6 +17,9 @@ Some meshes have shared skeletons. Under the tools menu you can manually specify
 
 
 # Recent Changes
+* Small update to the lod handling to make it more accurate
+* Minor tweak to image code to fix a few images exporting wrong
+____
 * Vertex colors no long preview over the mesh but will still be exported
 * Some texture mirroring support was added DE mesh preview. It's not 100% accurate in detection but the meshes look a lot better than before
 * Material color is now read
