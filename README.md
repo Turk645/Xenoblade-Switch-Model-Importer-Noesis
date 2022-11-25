@@ -17,6 +17,9 @@ Some meshes have shared skeletons. Under the tools menu you can manually specify
 
 
 # Recent Changes
+* Rewrote a small portion of the image table reading. Should be more accurate and prevent some misc. items from only loading the lowest mip
+* Added toggles to preview the vertex colors and to load in the duplicate meshes for things like outlines
+____
 * Small update to the lod handling to make it more accurate
 * Minor tweak to image code to fix a few images exporting wrong
 ____
