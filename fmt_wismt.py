@@ -14,9 +14,13 @@ def registerNoesisTypes():
     xenoSkelHandle = noesis.registerTool("&Skeleton Override", xenoToolMenu)
     xenoLodHandle = noesis.registerTool("&Try Highest Level of Detail", xenoLodToggle)
     xenoMorphHandle = noesis.registerTool("&Skip Morph Data", xenoMorphToggle)
+    xenoVCHandle = noesis.registerTool("&Preview Vertex Color Data", xenoVCToggle)
+    xenoDuplicateHandle = noesis.registerTool("&Preview Duplicate Mesh Data", xenoDuplicateToggle)
     noesis.setToolSubMenuName(xenoSkelHandle,"Xenoblade Switch")
     noesis.setToolSubMenuName(xenoLodHandle,"Xenoblade Switch")
     noesis.setToolSubMenuName(xenoMorphHandle,"Xenoblade Switch")
+    noesis.setToolSubMenuName(xenoVCHandle,"Xenoblade Switch")
+    noesis.setToolSubMenuName(xenoDuplicateHandle,"Xenoblade Switch")
 
     noesis.checkToolMenuItem(xenoLodHandle,True)
     return 1
@@ -29,6 +33,8 @@ xbc1_header = 828596856
 xenoLodFlag = True
 xenoMorphFlag = False
 xenoWimdoBoneFlag = False
+xenoDuplicateFlag = False
+xenoVertexColorFlag = False
 
 
 def noepyCheckType(data):
@@ -44,6 +50,7 @@ def noepyCheckType(data):
     return 1
 
 def noepyLoadModel(data, mdlList):
+    global xenoVertexColorFlag
     FilePath = rapi.getDirForFilePath(rapi.getInputName())
     BaseFileName = rapi.getExtensionlessName(rapi.getLocalFileName(rapi.getInputName()))
 
@@ -54,6 +61,7 @@ def noepyLoadModel(data, mdlList):
         if FilePath[-3:] == "\\m\\":
             if rapi.checkFileExists(FilePath[:-3]+"\\h\\"+rapi.getLocalFileName(rapi.getInputName())):
                 tmpTex = decomp_xbc1(NoeBitStream(rapi.loadIntoByteArray(FilePath[:-3]+"\\h\\"+rapi.getLocalFileName(rapi.getInputName()))),0)
+                print("Found",rapi.getLocalFileName(rapi.getInputName()))
         parse_texture(decomp_xbc1(wismt,0),mdlList,htex = tmpTex)
         return 1
         
@@ -90,12 +98,14 @@ def noepyLoadModel(data, mdlList):
     
     ExternalTextureIDList = []
     TextureNameList = []
+    texTable = []
     wismt.seek(TextureIDOffset)
     for x in range(TextureIDCount):
         texID = wismt.readShort()
         ExternalTextureIDList.append(texID)
     
     if TextureNameTableOffset > 0:
+        #print("Passed")
         TextureNameTableOffset += 0x10
         wismt.seek(TextureNameTableOffset)
         textureCount = wismt.readInt()
@@ -107,14 +117,18 @@ def noepyLoadModel(data, mdlList):
                 wismt.seek(texNameOffset)
                 texName = wismt.readString()
                 TextureNameList.append(texName)
+        
+    
+    
+    wismtDataTable = []
     for x in range(DataCount):
         wismt.seek(DataOffset+0x14*x)
-        dataOffset = wismt.readInt()
-        dataSize = wismt.readInt()
-        wismt.seek(2,1)
+        dOffset = wismt.readInt()
+        dSize = wismt.readInt()
+        fullIndex = wismt.readShort()
         dataType = wismt.readShort()
-        if dataType == 2:
-            break
+        wismtDataTable.append([dOffset,dSize,fullIndex,dataType])
+
     toc = []
     wismt.seek(ToCOffset)
     for x in range(ToCCount):
@@ -122,37 +136,45 @@ def noepyLoadModel(data, mdlList):
         DecompSize = wismt.readInt()
         xbc1Offset = wismt.readInt()
         toc.append(xbc1Offset)
+        
+    
     wismtDecomp = decomp_xbc1(wismt,toc[0])
     VertData,FaceData,WeightDefTable,WeightOffsetTable = parse_vert_data(wismtDecomp)
-    texTable = parse_lbim(wismtDecomp,dataOffset,mdlList,TextureNameList)
-    if ToCCount>1:
-        toc2 = decomp_xbc1(wismt,toc[1])
-        texTable2 = parse_lbim(toc2,0,mdlList,TextureNameList)
-    else: texTable2 = None
-
-    if ToCCount-2 == TextureIDCount and texTable2:
-        for x in range(TextureIDCount):
-            tmpImg = decomp_xbc1(wismt,toc[x+2])
-            tmpIndex = ExternalTextureIDList[x]
-            tmpH = texTable2[x].height*2
-            tmpW = texTable2[x].width*2
-            tmpF = texTable2[x].format
-            tmpTex = parse_texture(tmpImg,mdlList,texName=TextureNameList[tmpIndex],H=tmpH,W=tmpW,F=tmpF)
-            texTable[tmpIndex] = tmpTex
-    mPath = FilePath[:-3]+"tex\\nx\\m\\"
-    if os.path.exists(mPath):
-        for x in range(TextureIDCount):
-            tmpIndex = ExternalTextureIDList[x]
-            tmpPath = mPath+TextureNameList[tmpIndex]+".wismt"
-            if rapi.checkFileExists(tmpPath):
-                tmpTex = decomp_xbc1(NoeBitStream(rapi.loadIntoByteArray(tmpPath)),0)
-                if os.path.exists(mPath[:-2]+"h\\"):
-                    tmpHTex = decomp_xbc1(NoeBitStream(rapi.loadIntoByteArray(mPath[:-2]+"h\\"+TextureNameList[tmpIndex]+".wismt")),0)
-                    tmpTexOut = parse_texture(tmpTex,mdlList,htex = tmpHTex,texName=TextureNameList[tmpIndex])
+    if TextureNameTableOffset > 0:
+        texTable = parse_lbim(wismtDecomp,wismtDataTable[2][0],mdlList,TextureNameList)        
+        if ToCCount > 1:
+            toc2 = decomp_xbc1(wismt,toc[1])
+            for x in range(3,DataCount):
+                if wismtDataTable[x][2] > 0:
+                    toc2.seek(wismtDataTable[x][0]+wismtDataTable[x][1]-0x20)
+                    tmpW = toc2.readInt()*2
+                    tmpH = toc2.readInt()*2
+                    toc2.seek(8,1)
+                    tmpF = toc2.readInt()
+                    tmpImg = decomp_xbc1(wismt,toc[wismtDataTable[x][2]-1])
+                    tmpTex = parse_texture(tmpImg,mdlList,H=tmpH,W=tmpW,F=tmpF,texName=TextureNameList[ExternalTextureIDList[x-3]])
+                    texTable[ExternalTextureIDList[x-3]] = tmpTex     
                 else:
-                    tmpTexOut = parse_texture(tmpTex,mdlList,texName=TextureNameList[tmpIndex])
-                texTable[tmpIndex] = tmpTexOut
+                    tmpTex = parse_texture(toc2,mdlList,Offset=wismtDataTable[x][0],FileSize=wismtDataTable[x][1],texName=TextureNameList[x-3])
+                
+        mPath = FilePath[:-3]+"tex\\nx\\m\\"
+        if os.path.exists(mPath):
+            for x in range(TextureIDCount):
+                tmpIndex = ExternalTextureIDList[x]
+                tmpPath = mPath+TextureNameList[tmpIndex]+".wismt"
+                if rapi.checkFileExists(tmpPath):
+                    tmpTex = decomp_xbc1(NoeBitStream(rapi.loadIntoByteArray(tmpPath)),0)
+                    if os.path.exists(mPath[:-2]+"h\\"):
+                        tmpHTex = decomp_xbc1(NoeBitStream(rapi.loadIntoByteArray(mPath[:-2]+"h\\"+TextureNameList[tmpIndex]+".wismt")),0)
+                        tmpTexOut = parse_texture(tmpTex,mdlList,htex = tmpHTex,texName=TextureNameList[tmpIndex])
+                    else:
+                        tmpTexOut = parse_texture(tmpTex,mdlList,texName=TextureNameList[tmpIndex])
+                    texTable[tmpIndex] = tmpTexOut
+    
     DataTable,MatTable,BoneTableFallback,LodDef = parse_wimdo(wimdo,TextureNameList,texTable)
+    
+
+    
     if BoneTable:
         tmpList = [i.name for i in BoneTable]
         tmpList2 = [i.name for i in BoneTableFallback]
@@ -168,6 +190,8 @@ def noepyLoadModel(data, mdlList):
                     tmpInt += 1
     elif not BoneTable and BoneTableFallback:
         BoneTable = BoneTableFallback
+    
+    
     ctx = rapi.rpgCreateContext()
     for d in DataTable:
         rapi.rpgClearBufferBinds()
@@ -192,7 +216,7 @@ def noepyLoadModel(data, mdlList):
              rapi.rpgBindUV2BufferOfs(CurVert["VertData"], noesis.RPGEODATA_FLOAT, CurVert["VertSize"], CurVert["VertDef"]["UV2"])
         if CurVert["VertDef"].get("UV3",None) != None:
              rapi.rpgBindUVXBufferOfs(CurVert["VertData"], noesis.RPGEODATA_FLOAT, CurVert["VertSize"], 2,2,CurVert["VertDef"]["UV3"])
-        if rapi.noesisIsExporting(): #Skip viewing vertex colors in preview
+        if rapi.noesisIsExporting() or xenoVertexColorFlag: #Skip viewing vertex colors in preview
             if CurVert["VertDef"].get("VertColor",None) != None:
                  rapi.rpgBindColorBufferOfs(CurVert["VertData"], noesis.RPGEODATA_UBYTE, CurVert["VertSize"], CurVert["VertDef"]["VertColor"],4)
              
@@ -208,6 +232,7 @@ def noepyLoadModel(data, mdlList):
             rapi.rpgBindBoneWeightBuffer(WeightBytes,noesis.RPGEODATA_USHORT,8,4)
         for x in DataTable[d]:
             if x[4] in LodDef or not xenoLodFlag:
+
                 CurFace = FaceData[x[2]]
                 rapi.rpgSetName(MatTable[x[3]].name+"_"+str(x[5]))
                 rapi.rpgSetMaterial(MatTable[x[3]].name)
@@ -334,6 +359,7 @@ def parse_vert_data(CurFile):
             if DefTypeLookup:
                 VertDefOutput[DefTypeLookup] = DefOffset
             DefOffset+=DefLength
+            
         if x == WeightDefIndex:
             WeightDefTable = []
             for y in range(VertCount):
@@ -341,6 +367,8 @@ def parse_vert_data(CurFile):
                 Weights = noeUnpack("4H",CurFile.readBytes(8))
                 BoneWeightIndexes = noeUnpack("4B",CurFile.readBytes(4))
                 WeightDefTable.append([BoneWeightIndexes,Weights])
+                
+            
         CurFile.seek(ChunkStart)
         VertChunk = CurFile.readBytes(VertCount*VertSize)
         VertData.append({"VertData":VertChunk,"VertDef":VertDefOutput,"VertSize":VertSize,"VertCount":VertCount})
@@ -432,9 +460,13 @@ def parse_wimdo(CurFile,TextureNameList,texTable):
             LodIndex = CurFile.readShort()
             CurFile.seek(2,1)
             LodDef.append(LodIndex+1)
+        
     else:
         LodDef = [1]
+        
+    
     BoneTable = None
+    
     DataTable = {}
     DupeCheck = []
     BoneTable = []
@@ -459,7 +491,8 @@ def parse_wimdo(CurFile,TextureNameList,texTable):
             if not DataEntry:
                 DataEntry = DataTable[VertIndex]=[]
             if str(VertIndex)+"_"+str(FaceIndex) not in DupeCheck:
-                DupeCheck.append(str(VertIndex)+"_"+str(FaceIndex))
+                if not xenoDuplicateFlag:
+                    DupeCheck.append(str(VertIndex)+"_"+str(FaceIndex))
                 DataEntry.append(SubTab)
 
     if BoneOffset > 0:
@@ -502,6 +535,9 @@ def parse_wimdo(CurFile,TextureNameList,texTable):
                 BoneTable[Child2].parentIndex = -1
                 BoneTable[Child1].parentName = BoneTable[Parent1].name
                 BoneTable[Child2].parentName = BoneTable[Parent2].name
+            
+            
+    
     return DataTable,MatTable,BoneTable,LodDef
     
 def parse_materials(CurFile,MaterialTableOffset,TextureNameList,texTable,Itter = 0x74):
@@ -532,7 +568,12 @@ def parse_materials(CurFile,MaterialTableOffset,TextureNameList,texTable,Itter =
         tmpMat.setDiffuseColor(MatColor)
         tmpMat.setFlags(noesis.NMATFLAG_TWOSIDED)
         MatTable.append(tmpMat)
+
+    
+
     return MatTable
+
+    return
     
     
 def xenoToolMenu(toolIndex):
@@ -552,6 +593,19 @@ def xenoMorphToggle(handle):
     xenoMorphFlag = not xenoMorphFlag
     noesis.checkToolMenuItem(handle,xenoMorphFlag)
     return 0
+
+def xenoVCToggle(handle):
+    global xenoVertexColorFlag
+    xenoVertexColorFlag = not xenoVertexColorFlag
+    noesis.checkToolMenuItem(handle,xenoVertexColorFlag)
+    return 0
+
+def xenoDuplicateToggle(handle):
+    global xenoDuplicateFlag
+    xenoDuplicateFlag = not xenoDuplicateFlag
+    noesis.checkToolMenuItem(handle,xenoDuplicateFlag)
+    return 0
+
 
 def generate_weight_table(weightRefTable,WeightDefTable,BoneTable,BoneTableFallback,wOffset):
     BoneIndexBytes = b''
@@ -606,15 +660,18 @@ def parse_texture(CurFile,mdlList,htex = None,Offset = 0,FileSize = None,texName
         format = noesis.FOURCC_BC4
     elif iFormat == 75:
         format = noesis.FOURCC_BC5
+    elif iFormat == 80:
+        format = noesis.FOURCC_BC6H
     elif iFormat == 77:
         format = noesis.FOURCC_BC7
     else:
         format = noesis.NOESISTEX_DXT1
+        print("Unknown Format:",iFormat)
     
     blockWidth = 2 if iFormat == 37 else 4
     blockHeight = 1 if iFormat == 37 else 4
     blockSize = 8
-    if format == noesis.FOURCC_BC5 or format == noesis.FOURCC_BC7 or format == noesis.NOESISTEX_DXT5: blockSize = 16
+    if format == noesis.FOURCC_BC5 or format == noesis.FOURCC_BC6H or format == noesis.FOURCC_BC7 or format == noesis.NOESISTEX_DXT5: blockSize = 16
     mbH = 4 
     if xSize < 512 and xSize == ySize:
         mbH = 3
@@ -627,6 +684,10 @@ def parse_texture(CurFile,mdlList,htex = None,Offset = 0,FileSize = None,texName
             mbH = 4
         if xSize == 1024 and ySize < 512:
             mbH = 3
+        if xSize == 1024 and ySize < 256:
+            mbH = 2
+        if xSize == 1024 and ySize < 128:
+            mbH = 1
         if xSize == 512 and ySize < 512:
             mbH = 4
         if xSize == 512 and ySize <= 256:
@@ -649,6 +710,8 @@ def parse_texture(CurFile,mdlList,htex = None,Offset = 0,FileSize = None,texName
             mbH = 3
         if xSize == 128 and ySize < 128:
             mbH = 1
+        if xSize == 128 and ySize < 17:
+            mbH = 0
         if xSize == 64 and ySize < 257:
             mbH = 3
         if xSize == 64 and ySize < 129:
@@ -664,6 +727,8 @@ def parse_texture(CurFile,mdlList,htex = None,Offset = 0,FileSize = None,texName
         data = rapi.imageDecodeRaw(data, xSize, ySize, "r8g8b8a8")
     else:
         data = rapi.imageDecodeDXT(data, xSize, ySize, format)
+    if (xSize %4 !=0) or (ySize %4 !=0):
+        print("Potentially bad mip on image "+texName)
     tex = NoeTexture(texName, xSize, ySize, data)
     tex.format = iFormat
     return tex
@@ -683,7 +748,6 @@ def parse_lbim(CurFile,Offset,mdlList,texNameList):
             lbimStart = CurOffset
         else:
             CurOffset += 0x1000
-            
     for x in lbimList:
         tex = parse_texture(CurFile,mdlList,Offset=x[0],FileSize=x[1],texName = texNameList[lbimList.index(x)])
         texTable.append(tex)
